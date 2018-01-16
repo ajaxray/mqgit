@@ -30,17 +30,20 @@ func Read(dbPath, bucket string, key []byte) string {
 	db := connect(dbPath)
 	defer db.Close()
 
-	v := []byte("")
+	var v []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		v = b.Get(key)
+
 		return nil
 	})
 
 	if err != nil {
-		fmt.Println("Read Failed!")
+		fmt.Println("DB Read Failed!")
 		log.Fatal(err)
+		return ""
 	}
+
 	return string(v)
 }
 
@@ -64,6 +67,11 @@ func Write(dbPath, bucket string, key, value []byte) {
 }
 
 // Map a function for all elements of bucket
+// Example:
+// db.Map(getDbPath(), "settings", func(k, v []byte) error {
+// 	fmt.Printf("key=%s, value=%s\n", k, v)
+// 	return nil
+// })
 func Map(dbPath, bucket string, fn func(k, v []byte) error) {
 	db := connect(dbPath)
 	defer db.Close()
@@ -78,4 +86,14 @@ func Map(dbPath, bucket string, fn func(k, v []byte) error) {
 		fmt.Println("Failed iterating over items of " + bucket)
 		log.Fatal(err)
 	}
+}
+
+// Dictionary create a map from key and values
+func Dictionary(dbPath, bucket string) map[string]string {
+	m := make(map[string]string)
+	Map(dbPath, "settings", func(k, v []byte) error {
+		m[string(k)] = string(v)
+		return nil
+	})
+	return m
 }

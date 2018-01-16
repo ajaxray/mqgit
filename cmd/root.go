@@ -3,15 +3,14 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/ajaxray/mqgit/db"
 	"github.com/spf13/cobra"
 )
 
@@ -38,36 +37,9 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func getDbPath() string {
-	if pwd, err := os.Getwd(); err == nil {
-		return filepath.Join(pwd, dbFileName)
-	} else {
-		log.Fatal(err)
-		return ""
-	}
-}
-
-func prompt(question string, defaultAnswer string) string {
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print(question)
-	text, _ := reader.ReadString('\n')
-	if text == "\n" {
-		return defaultAnswer
-	}
-
-	return strings.TrimSuffix(text, "\n")
-}
-
-// Make a exec.Cmd from string
-// Then you can use it for example: output, err := cmd.Output()
-func makeShellCmd(cmd string) *exec.Cmd {
-	return exec.Command("sh", "-c", cmd)
-}
-
 func findRepoDb(dir string) (string, error) {
 	if "" == dir {
-		return "", errors.New("no db file found in current or any of parent directories")
+		return "", errors.New("no db file found in current or any of parent directories. Use \"mqgit init\"")
 	}
 
 	dbPath := filepath.Join(dir, dbFileName)
@@ -77,6 +49,24 @@ func findRepoDb(dir string) (string, error) {
 		parent, _ := filepath.Split(dir)
 		return findRepoDb(strings.TrimSuffix(parent, "/"))
 	}
+}
+
+func getDbOrDie() string {
+	if pwd, errWd := os.Getwd(); errWd == nil {
+		if dbPath, errDbPath := findRepoDb(pwd); errDbPath == nil {
+			return dbPath
+		} else {
+			log.Fatal(errDbPath)
+		}
+	} else {
+		log.Fatal(errWd)
+	}
+	os.Exit(0)
+	return "Died!"
+}
+
+func getSettings(dbPath string) map[string]string {
+	return db.Dictionary(dbPath, "settings")
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/ajaxray/mqgit/db"
+	u "github.com/ajaxray/mqgit/util"
 	"github.com/spf13/cobra"
 )
 
@@ -16,13 +17,8 @@ var forceInit bool
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Initiate MqGIT repository",
+	Long:  `Initiate MqGIT for in this (and all decendent) directory`,
 	Run: func(cmd *cobra.Command, args []string) {
 		pwd, _ := os.Getwd()
 		dbPath, errFindDb := findRepoDb(pwd)
@@ -30,7 +26,7 @@ to quickly create a Cobra application.`,
 		initiated := errFindDb == nil
 
 		if initiated && !forceInit {
-			fmt.Println("Already initiated. Use \"mqgit init --force\" to clear and re-initiate.")
+			fmt.Println("Already initiated! Use \"mqgit init --force\" to clear and re-initiate.")
 			os.Exit(0)
 		}
 
@@ -39,17 +35,20 @@ to quickly create a Cobra application.`,
 			// Get current directory name, possibly the db name
 			currentDir := filepath.Base(pwd)
 
-			dbhost := prompt("Database hostname [127.0.0.1]:", "127.0.0.1")
-			dbuser := prompt("Database user [root]:", "root")
-			dbpass := prompt(fmt.Sprintf("Password of %s at %s:", dbuser, dbhost), "")
-			dbname := prompt(fmt.Sprintf("Database name [%s]:", currentDir), currentDir)
+			dbhost := u.Prompt("Database hostname [127.0.0.1]:", "127.0.0.1")
+			dbport := u.Prompt("Database port [3306]:", "3306")
+			dbuser := u.Prompt("Database user [root]:", "root")
+			dbpass := u.Prompt(fmt.Sprintf("Password of %s at %s:", dbuser, dbhost), "")
+			dbname := u.Prompt(fmt.Sprintf("Database name [%s]:", currentDir), currentDir)
 
 			fmt.Println("Initializng MqGIT...")
-			verifyInitConfig(dbhost, dbuser, dbpass, dbname)
+			verifyInitConfig(dbhost, dbport, dbuser, dbpass, dbname)
 
+			dbPath = filepath.Join(pwd, dbFileName)
+			db.Write(dbPath, "settings", []byte("dbhost"), []byte(dbhost))
+			db.Write(dbPath, "settings", []byte("dbport"), []byte(dbport))
 			db.Write(dbPath, "settings", []byte("dbuser"), []byte(dbuser))
 			db.Write(dbPath, "settings", []byte("dbpass"), []byte(dbpass))
-			db.Write(dbPath, "settings", []byte("dbhost"), []byte(dbhost))
 			db.Write(dbPath, "settings", []byte("dbname"), []byte(dbname))
 			fmt.Println(`Happy logging! Use "mqgit commit -m message" to log database state`)
 		}
@@ -64,16 +63,14 @@ func init() {
 	initCmd.Flags().BoolVarP(&forceInit, "force", "f", false, "Clear and re-initiate if required.")
 }
 
-func verifyInitConfig(dbhost, dbuser, dbpass, dbname string) {
-	cmd := makeShellCmd(fmt.Sprintf("mysql -h%s -u%s -p\"%s\" -e 'use %s'", dbhost, dbuser, dbpass, dbname))
-	_, err := cmd.Output()
+func verifyInitConfig(dbhost, dbport, dbuser, dbpass, dbname string) {
+	_, err := u.RunCommand(fmt.Sprintf("mysql -h%s -P%s -u%s -p\"%s\" -e 'use %s'", dbhost, dbport, dbuser, dbpass, dbname))
 
 	if err != nil {
 		fmt.Println("Connection test failed!")
-		fmt.Printf("Provided settings: server=%s;uid=%s;pwd=%s;database=%s\n", dbhost, dbuser, dbpass, dbname)
+		fmt.Printf("Provided settings: server=%s:%s;uid=%s;pwd=%s;database=%s\n", dbhost, dbport, dbuser, dbpass, dbname)
 		fmt.Println("Aborting initialization.")
 		os.Exit(0)
-		return
 	} else {
 		fmt.Println("Connection successfull!")
 	}

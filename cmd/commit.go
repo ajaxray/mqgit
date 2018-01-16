@@ -4,51 +4,74 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-	"os"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/ajaxray/mqgit/db"
+	"github.com/ajaxray/mqgit/util"
+	"github.com/labstack/gommon/bytes"
 	"github.com/spf13/cobra"
 )
+
+var commitMsg string
+var amend bool
 
 // commitCmd represents the commit command
 var commitCmd = &cobra.Command{
 	Use:   "commit",
-	Short: "Commit current state of database",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Commit current state of Database",
+	Long: `Commit a snapshot (technically, a compressed backup with metadata) 
+			of current schema, data, triggers and stored routines of configured database.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		dbPath := getDbOrDie()
+		conf := getSettings(dbPath)
+		cmdStr := getDmpCommand(conf)
 
-		if pwd, err := os.Getwd(); err == nil {
-			dbPath, err := findRepoDb(pwd)
-			if err != nil {
-				log.Fatal(err)
-			} else {
-				fmt.Println("Here is DB: " + dbPath)
-			}
-
-		} else {
-			log.Fatal(err)
+		output, err := util.RunCommand(cmdStr)
+		if err != nil {
+			fmt.Println(err)
 		}
 
-		fmt.Println("commit called")
+		commitID := time.Now().Unix()
+		data := makeCommitJSON(commitID, output)
+
+		db.Write(dbPath, "commits", []byte(strconv.FormatInt(commitID, 10)), []byte(data))
+		if showVerbose {
+			fmt.Printf("Commit saved. Compressed dump size: %s\n", bytes.Format(int64(len(data))))
+		}
+
 	},
+}
+
+func getDmpCommand(conf map[string]string) string {
+	connection := fmt.Sprintf("-h%s -P%s  -u%s -p%s", conf["dbhost"], conf["dbport"], conf["dbuser"], conf["dbpass"])
+
+	options := "--skip-comments --routines --triggers"
+
+	cmdParts := []string{"mysqldump", connection, options, conf["dbname"]}
+	return strings.Join(cmdParts, " ")
+}
+
+func makeCommitJSON(commitID int64, sql []byte) string {
+	commit := db.Commit{
+		ID:         commitID,
+		Message:    commitMsg,
+		GitHash:    util.CurrentGitHash(),
+		GitMessage: util.LastGitMessage(),
+		Sql:        string(sql),
+	}
+
+	commitJSON, _ := commit.ToJSON()
+	return commitJSON
 }
 
 func init() {
 
 	rootCmd.AddCommand(commitCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
 	// commitCmd.PersistentFlags().String("foo", "", "A help for foo")
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// commitCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	commitCmd.Flags().BoolVarP(&amend, "amend", "u", false, "Update latest commit")
+	commitCmd.Flags().StringVarP(&commitMsg, "message", "m", "", "Commit message")
 }
