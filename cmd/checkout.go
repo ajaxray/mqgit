@@ -28,7 +28,7 @@ var checkoutCmd = &cobra.Command{
 	Aliases: []string{"restore"},
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) != 1 {
-			return errors.New("accepts (only) CommitID as argument")
+			return errors.New("Accepts (only) CommitID as argument")
 		}
 		if _, err := strconv.ParseInt(args[0], 10, 64); err != nil {
 			return errors.New("non-numeric CommitID provided")

@@ -4,11 +4,14 @@ package cmd
 
 import (
 	"fmt"
-	"os"
+	"time"
 
 	"github.com/ajaxray/mqgit/db"
+	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 )
+
+var msgLen uint
 
 // logCmd represents the log command
 var logCmd = &cobra.Command{
@@ -17,19 +20,23 @@ var logCmd = &cobra.Command{
 	Long: `Displays list of available commits. 
 	       This list can be filtered and styled in various ways using flags.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		pwd, _ := os.Getwd()
-		dbPath, errFindDb := findRepoDb(pwd)
+		dbPath := getDbOrDie()
+		table := uitable.New()
+		table.Separator = "  "
+		table.AddRow("CommitID", "CreatedAt", "Commit Message")
+		table.AddRow("-----------", "-------------------------", "------------------------------")
+		table.MaxColWidth = msgLen
 
-		if errFindDb == nil {
-			dbhost := db.Read(dbPath, "settings", []byte("dbhost"))
-			dbuser := db.Read(dbPath, "settings", []byte("dbuser"))
-			dbpass := db.Read(dbPath, "settings", []byte("dbpass"))
-			dbname := db.Read(dbPath, "settings", []byte("dbname"))
+		db.Map(dbPath, "commits", func(k, v []byte) error {
+			//fmt.Printf("key=%s, value=%s\n", k, v)
+			var commit db.Commit
+			commit.FromJSON(string(v))
+			at := time.Unix(commit.ID, 0)
+			table.AddRow(commit.ID, at.Format("Mon Jan _2 15:04:05 2006"), commit.Message)
 
-			fmt.Printf("Provided settings: server=%s;uid=%s;pwd=%s;database=%s\n", dbhost, dbuser, dbpass, dbname)
-		} else {
-			fmt.Errorf("No db found")
-		}
+			return nil
+		})
+		fmt.Println(table)
 	},
 }
 
@@ -45,4 +52,5 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// logCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	logCmd.Flags().UintVarP(&msgLen, "msg-len", "l", 40, "Length of message to show in default view")
 }
